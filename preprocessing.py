@@ -3,6 +3,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
 def load_data():
     df = pd.read_csv("data/dt_value_SmartBuilding_hourly.csv")
@@ -114,3 +115,72 @@ def scaling(X_train, X_validation, X_test, num_features=4):
         X_test_feature_scaled = scaler.transform(X_test_feature.reshape(-1, 1)).reshape(X_test_feature.shape)
         X_test_scaled[:, :, i] = X_test_feature_scaled
     return X_train_scaled, X_validation_scaled, X_test_scaled
+
+
+def scaling_and_pca(X_train, X_validation, X_test, 
+                    n_components=10, 
+                    scaler=None, 
+                    pca=None):
+    """
+    同時對數據進行縮放 + PCA 降維，
+    保留最後一維特徵從原本的維度降到 n_components。
+    
+    參數：
+    --------
+    X_train : ndarray, shape (n_samples, n_timesteps, n_features)
+    X_validation : ndarray, shape (n_samples_val, n_timesteps, n_features)
+    X_test : ndarray, shape (n_samples_test, n_timesteps, n_features)
+    n_components : int, PCA 最終想保留的特徵維度 (預設 10)
+    scaler : Scaler 物件，若傳入 None，則預設使用 StandardScaler()
+    pca : PCA 物件，若傳入 None，則會在此函式內 new 一個 PCA(n_components=...)
+           如果需要在多處使用相同 PCA，或想查看保留方差，可傳入自定義的 PCA 物件
+
+    回傳：
+    --------
+    X_train_scaled : ndarray, shape (n_samples, n_timesteps, n_components)
+    X_validation_scaled : ndarray, shape (n_samples_val, n_timesteps, n_components)
+    X_test_scaled : ndarray, shape (n_samples_test, n_timesteps, n_components)
+    scaler : 縮放器物件 (可能用於後續或查看特徵縮放參數)
+    pca : PCA 物件 (可用於查看各主成分的解釋度等)
+    """
+    
+    # 1) 如果呼叫者沒提供 scaler，預設用 StandardScaler
+    if scaler is None:
+        scaler = StandardScaler()
+        
+    # 2) 如果呼叫者沒提供 pca，則新建一個
+    if pca is None:
+        pca = PCA(n_components=n_components)
+    
+    # 取得 shape
+    n_samples_train, n_timesteps, n_features = X_train.shape
+    n_samples_val = X_validation.shape[0]
+    n_samples_test = X_test.shape[0]
+    
+    # =============== 先做 Reshape 成 2D ===============
+    #  (samples * timesteps, features)
+    X_train_2d = X_train.reshape(-1, n_features)
+    X_val_2d = X_validation.reshape(-1, n_features)
+    X_test_2d = X_test.reshape(-1, n_features)
+
+    # =============== 先做 Scaling ===============
+    # fit_transform 用於訓練資料
+    X_train_scaled_2d = scaler.fit_transform(X_train_2d)
+    # validation, test 直接 transform
+    X_val_scaled_2d = scaler.transform(X_val_2d)
+    X_test_scaled_2d = scaler.transform(X_test_2d)
+
+    # =============== 接著做 PCA 降維 ===============
+    # PCA 對訓練資料擬合 + 轉換
+    X_train_pca_2d = pca.fit_transform(X_train_scaled_2d) 
+    # validation, test 直接 transform
+    X_val_pca_2d = pca.transform(X_val_scaled_2d)
+    X_test_pca_2d = pca.transform(X_test_scaled_2d)
+
+    # =============== Reshape 回 3D ===============
+    # (samples, timesteps, n_components)
+    X_train_scaled = X_train_pca_2d.reshape(n_samples_train, n_timesteps, n_components)
+    X_validation_scaled = X_val_pca_2d.reshape(n_samples_val, n_timesteps, n_components)
+    X_test_scaled = X_test_pca_2d.reshape(n_samples_test, n_timesteps, n_components)
+
+    return X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca

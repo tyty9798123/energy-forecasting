@@ -5,6 +5,9 @@ from tensorflow.keras.layers import Dense, LSTM, Conv1D, MaxPooling1D, Flatten, 
 from tcn import TCN
 from tensorflow.keras.callbacks import EarlyStopping
 
+def rmse(y_true, y_pred):
+    return tf.sqrt(tf.reduce_mean(tf.square(y_pred - y_true)))
+
 def build_model(look_back, n_features):
     model = Sequential()
     model.add(Bidirectional(LSTM(50, activation='relu', return_sequences=True), input_shape=(look_back, n_features)))
@@ -13,17 +16,31 @@ def build_model(look_back, n_features):
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss='mean_absolute_error')
     return model
 
+def build_model_MLP(look_back, n_features, h=1):
+    model = Sequential()
+    # Flatten layer will convert (look_back, n_features) -> (look_back * n_features,)
+    model.add(Flatten(input_shape=(look_back, n_features)))
+    
+    # You can add more hidden layers as needed:
+    model.add(Dense(100, activation='relu'))
+    # model.add(Dense(64, activation='relu'))  # Example additional layer
+    
+    # Output layer for 'h' predictions
+    model.add(Dense(h))
+
+    # Compile the model
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
+                  loss=rmse)
+    return model
+
 def build_model_LSTM(look_back, n_features, h=1):
     model = Sequential()
     model.add(LSTM(100, activation='relu', return_sequences=False, input_shape=(look_back, n_features)))
     model.add(Dense(h))
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss='mean_absolute_error')
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=rmse)
     return model
 
 import tensorflow as tf
-
-def rmse(y_true, y_pred):
-    return tf.sqrt(tf.reduce_mean(tf.square(y_pred - y_true)))
 
 def build_model_TCN(look_back, n_features, h=1):
     model = Sequential()

@@ -15,10 +15,10 @@ import time
 
 
 from preprocessing import (load_data, add_features, add_temp, add_emd, create_dataset, 
-                           split_time_series_data, split_time_series_data_2parts, scaling)
+                           split_time_series_data, split_time_series_data_2parts, scaling, scaling_and_pca)
 from models import (build_model, build_model_LSTM, build_model_TCN, build_combined_model,
                     build_model_sensors, build_model_cnn, build_model_cnn_lstm, build_model_tcn_gru,
-                    train_model, train_model_2, build_model_TCN_II)
+                    train_model, train_model_2, build_model_TCN_II, build_model_MLP)
 
 from math import sqrt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_absolute_percentage_error
@@ -295,7 +295,7 @@ if __name__ == "__main__":
 
     records = []
     horizon = 8
-    exec_time = 10
+    exec_time = 1
 
     for i in range(exec_time):
         for look_back in [48]:
@@ -312,7 +312,7 @@ if __name__ == "__main__":
                 # 固定測試資料長度
                 X_test, Y_test = new_X[-int(length*0.1):], new_y[-int(length*0.1):]
                 # 訓練和驗證資料
-                X_train, Y_train = new_X[:-int(length*0.1)], new_y[:-int(length *0.1)]
+                X_train, Y_train = new_X[:-int(length*0.1)], new_y[:-int(length*0.1)]
                 train_ratio = 0.85
                 X_train, Y_train, X_validation, Y_validation = split_time_series_data_2parts(X_train, Y_train, train_ratio)
                 n_features = X_test.shape[2]
@@ -328,7 +328,15 @@ if __name__ == "__main__":
                     break
 
                 X_train_scaled, X_validation_scaled, X_test_scaled = scaling(X_train, X_validation, X_test, len_of_scale)
-                model = build_model_tcn_gru(look_back, n_features, h=horizon)
+                X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca_model = scaling_and_pca(
+                    X_train, 
+                    X_validation, 
+                    X_test,
+                    n_components=18
+                )
+                #model = build_model_LSTM(look_back, X_train_scaled.shape[2], h=horizon)
+                model = build_model_MLP(look_back, X_train_scaled.shape[2], h=horizon)
+                #model = build_model_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
                 #model = build_model_sensors(look_back, n_features, h=horizon)
                 history = train_model(model, X_train_scaled, Y_train, X_validation_scaled, Y_validation)
                 
