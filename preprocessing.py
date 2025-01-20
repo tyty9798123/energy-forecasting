@@ -72,6 +72,64 @@ def create_dataset(data, look_back=1, h=1):
         Y.append(data[i + look_back:i + look_back + h, 0])  # Assuming we predict only the first feature
     return np.array(X), np.array(Y)
 
+def create_decoder_input(target_sequence, target_features=36):
+    """
+    根據目標序列創建 Decoder 輸入，並將特徵維度擴展到 target_features。
+    """
+    # 如果目標序列是2維的，擴展為三維 (samples, horizon, 1)
+    if target_sequence.ndim == 2:
+        target_sequence = target_sequence[..., np.newaxis]
+
+    samples, horizon, current_features = target_sequence.shape
+
+    # 如果目前特徵數小於目標特徵數，則進行擴展（例如重複最後一個特徵或填充0）
+    if current_features < target_features:
+        # 這裡簡單地重複現有特徵以達到 target_features
+        repeats = target_features // current_features
+        remainder = target_features % current_features
+        expanded = np.concatenate([target_sequence] * repeats + [target_sequence[:, :, :remainder]], axis=2)
+    else:
+        expanded = target_sequence[:, :, :target_features]
+
+    # 使用擴展後的特徵數量
+    _, _, n_features = expanded.shape
+
+    # 創建起始標記，其形狀為 (samples, 1, n_features)
+    start_token = np.zeros((samples, 1, n_features))
+
+    # 向右移動並在最前面加入 start_token
+    decoder_input = np.concatenate([start_token, expanded[:, :-1, :]], axis=1)
+    return decoder_input
+
+
+
+def create_dataset_single_step(data, look_back=1, step=1):
+    """
+    Create dataset for single-step forecasting, but the step can be
+    1-step ahead, 2-step ahead, ... etc.
+
+    Parameters:
+        data: numpy array, the input dataset (time series data).
+              shape: (total_samples, features)
+        look_back: int, the number of past time steps to use as input (X).
+        step: int, which future step to predict (e.g., step=1 means predict t+1,
+              step=2 means predict t+2, etc.)
+
+    Returns:
+        X: numpy array, shape (samples, look_back, features)
+        Y: numpy array, shape (samples,) or (samples, 1)
+           (Here we only predict the first feature, but you can modify as needed.)
+    """
+    X, Y = [], []
+    # 迴圈終止條件：確保在最尾端也能取到 step 的那個未來值
+    for i in range(len(data) - look_back - step + 1):
+        # 收集過去 look_back 個時間點的所有特徵
+        X.append(data[i : i + look_back, :])
+        # 預測目標：距離現在 step 步之後的第一個 feature
+        Y.append(data[i + look_back + step - 1, 0])
+    # 轉成 numpy array
+    return np.array(X), np.array(Y)
+
 
 def split_time_series_data(X, Y, train_ratio, validation_ratio, test_ratio):
     total_size = len(X)
@@ -184,3 +242,48 @@ def scaling_and_pca(X_train, X_validation, X_test,
     X_test_scaled = X_test_pca_2d.reshape(n_samples_test, n_timesteps, n_components)
 
     return X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca
+
+from sklearn.decomposition import FastICA
+
+def scaling_and_ica(X_train, X_validation, X_test,
+                    n_components=10,
+                    scaler=None,
+                    ica=None):
+    """
+    先做縮放，再用 ICA 對資料進行降維 (或成分分解)。
+    最終維度會降到 n_components。
+    """
+    # 1) 如果呼叫者沒提供 scaler，預設用 StandardScaler
+    if scaler is None:
+        scaler = StandardScaler()
+        
+    # 2) 如果呼叫者沒提供 ica，就建一個 FastICA
+    if ica is None:
+        ica = FastICA(n_components=n_components, random_state=0)
+    
+    # 取得 shape
+    n_samples_train, n_timesteps, n_features = X_train.shape
+    n_samples_val = X_validation.shape[0]
+    n_samples_test = X_test.shape[0]
+    
+    # =============== 先展平成 2D ===============
+    X_train_2d = X_train.reshape(-1, n_features)
+    X_val_2d = X_validation.reshape(-1, n_features)
+    X_test_2d = X_test.reshape(-1, n_features)
+
+    # =============== 先做 Scaling ===============
+    X_train_scaled_2d = scaler.fit_transform(X_train_2d)
+    X_val_scaled_2d = scaler.transform(X_val_2d)
+    X_test_scaled_2d = scaler.transform(X_test_2d)
+
+    # =============== 接著做 ICA ===============
+    X_train_ica_2d = ica.fit_transform(X_train_scaled_2d)
+    X_val_ica_2d = ica.transform(X_val_scaled_2d)
+    X_test_ica_2d = ica.transform(X_test_scaled_2d)
+
+    # =============== Reshape 回 3D ===============
+    X_train_ica = X_train_ica_2d.reshape(n_samples_train, n_timesteps, n_components)
+    X_val_ica = X_val_ica_2d.reshape(n_samples_val, n_timesteps, n_components)
+    X_test_ica = X_test_ica_2d.reshape(n_samples_test, n_timesteps, n_components)
+
+    return X_train_ica, X_val_ica, X_test_ica, scaler, ica

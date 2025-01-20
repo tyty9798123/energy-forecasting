@@ -42,6 +42,23 @@ def build_model_LSTM(look_back, n_features, h=1):
 
 import tensorflow as tf
 
+def build_seq2seq_TCN(look_back, n_features, h=1):
+    model = Sequential()
+    model.add(
+        TCN(
+            input_shape=(look_back, n_features),
+            return_sequences=True,   # <--- 改成 True
+            kernel_size=2,
+            nb_filters=32
+        )
+    )
+    # 对 TCN 每个时间步的输出都加上一层 Dense(h)
+    model.add(TimeDistributed(Dense(h)))
+    
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
+                  loss=rmse)  # 假设您定义了 rmse
+    return model
+
 def build_model_TCN(look_back, n_features, h=1):
     model = Sequential()
     model.add(TCN(input_shape=(look_back, n_features), return_sequences=False, kernel_size=2, nb_filters=32))
@@ -50,7 +67,38 @@ def build_model_TCN(look_back, n_features, h=1):
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=rmse)
     return model
 
-from keras.layers import Dense, Dropout, BatchNormalization
+def build_seq2seq_tcn_lstm(look_back,
+                           n_features,
+                           h,
+                           latent_dim=64,
+                           nb_filters=32,
+                           kernel_size=2):
+    # ------- Encoder 部分 (TCN) -------
+    encoder_inputs = Input(shape=(look_back, n_features), name='encoder_input')
+    encoder_output = TCN(nb_filters=nb_filters,
+                         kernel_size=kernel_size,
+                         return_sequences=False,
+                         name='tcn_encoder')(encoder_inputs)
+    state_h = Dense(latent_dim, activation='linear', name='encoder_state_h')(encoder_output)
+    state_c = Dense(latent_dim, activation='linear', name='encoder_state_c')(encoder_output)
+
+    # ------- Decoder 部分 (LSTM) -------
+    decoder_inputs = Input(shape=(h, n_features), name='decoder_input')
+    decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True, name='lstm_decoder')
+    decoder_outputs, _, _ = decoder_lstm(decoder_inputs, initial_state=[state_h, state_c])
+    
+    # 調整 Dense 層以輸出單一特徵
+    decoder_dense = Dense(1, activation='linear', name='decoder_output_dense')
+    decoder_outputs = decoder_dense(decoder_outputs)
+
+    # ------- 建立模型 -------
+    model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=rmse)
+    model.summary()
+    return model
+
+
+from keras.layers import Dense, Dropout, BatchNormalization, TimeDistributed
 
 
 def build_model_TCN_II(look_back, n_features, h=1):

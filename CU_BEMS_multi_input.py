@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score, mean_absolute_error
 from math import sqrt
-from keras.layers import Layer
+#from keras.layers import Layer
 import keras.backend as K
 import seaborn as sns
 import datetime
@@ -15,51 +15,111 @@ import time
 
 
 from preprocessing import (load_data, add_features, add_temp, add_emd, create_dataset, 
-                           split_time_series_data, split_time_series_data_2parts, scaling, scaling_and_pca)
+                           split_time_series_data, split_time_series_data_2parts, scaling, scaling_and_pca, scaling_and_ica, create_dataset_single_step, create_decoder_input)
+
 from models import (build_model, build_model_LSTM, build_model_TCN, build_combined_model,
                     build_model_sensors, build_model_cnn, build_model_cnn_lstm, build_model_tcn_gru,
-                    train_model, train_model_2, build_model_TCN_II, build_model_MLP)
+                    train_model, train_model_2, build_model_TCN_II, build_model_MLP, build_seq2seq_TCN, build_seq2seq_tcn_lstm)
 
 from math import sqrt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_absolute_percentage_error
 
-def metrics(model, Y_test, X_test_scaled, purpose, forecast_horizon):
+# def metrics(model, Y_test, X_test_scaled, purpose, forecast_horizon):
+#     # 使用模型進行預測
+#     predicted = model.predict(X_test_scaled)  # 預測結果形狀: [samples, forecast_horizon]
+    
+#     # 儲存預測和真實值以供分析
+#     save_data(Y_test, predicted, purpose=purpose)
+    
+#     # 初始化度量指標總和
+#     total_mae = 0
+#     total_rmse = 0
+#     total_r2 = 0
+#     total_mape = 0  # 新增 MAPE 總和的變量
+    
+#     # 計算每個步長的指標
+#     for step in range(forecast_horizon):
+#         step_mae = mean_absolute_error(Y_test[:, step], predicted[:, step])
+#         step_mse = mean_squared_error(Y_test[:, step], predicted[:, step])
+#         step_rmse = sqrt(step_mse)
+#         step_r2 = r2_score(Y_test[:, step], predicted[:, step])
+#         # 計算每一步的 MAPE
+#         step_mape = mean_absolute_percentage_error(Y_test[:, step], predicted[:, step])
+        
+#         total_mae += step_mae
+#         total_rmse += step_rmse
+#         total_r2 += step_r2
+#         total_mape += step_mape  # 累加 MAPE
+    
+#     # 計算所有預測步長的平均值
+#     mae = total_mae / forecast_horizon
+#     rmse = total_rmse / forecast_horizon
+#     r2 = total_r2 / forecast_horizon
+#     mape = total_mape / forecast_horizon  # 平均 MAPE
+    
+#     print(f'Mean Absolute Error (平均): {mae}')
+#     print(f'Root Mean Squared Error (平均): {rmse}')
+#     print(f'R^2 Score (平均): {r2}')
+#     print(f'Mean Absolute Percentage Error (平均): {mape}')  # 輸出 MAPE
+    
+#     return mae, rmse, r2, mape
+
+def metrics(model, Y_test, X_test_scaled, purpose):
+    """
+    計算並輸出 MAE, RMSE, R2, MAPE 等指標。
+    可以同時處理單步預測 (samples,) 與多步預測 (samples, horizon)。
+
+    Parameters:
+        model: 訓練好的模型，用於預測。
+        Y_test: numpy array, shape 可能是 (samples,) 或 (samples, horizon)。
+        X_test_scaled: numpy array, 模型需要的輸入 (已縮放)。
+        purpose: str, 給 save_data() 用的檔案命名用途。
+    """
     # 使用模型進行預測
-    predicted = model.predict(X_test_scaled)  # 預測結果形狀: [samples, forecast_horizon]
+    predicted = model.predict(X_test_scaled)  # 將得到 (samples,) 或 (samples, forecast_horizon)
+
+    # 檢查形狀，如果是一維 (單步)，就 reshape 成 (samples, 1)
+    if len(Y_test.shape) == 1:
+        Y_test = Y_test.reshape(-1, 1)
+    if len(predicted.shape) == 1:
+        predicted = predicted.reshape(-1, 1)
     
-    # 儲存預測和真實值以供分析
+    # 這樣就能保證 Y_test, predicted 都是 (samples, forecast_horizon)
+    # 取得實際的 horizon
+    forecast_horizon = Y_test.shape[1]
+    
+    # 儲存預測和真實值以供分析 (若你有維度檢查，也可以在這裡再做一次)
     save_data(Y_test, predicted, purpose=purpose)
-    
+
     # 初始化度量指標總和
     total_mae = 0
     total_rmse = 0
     total_r2 = 0
-    total_mape = 0  # 新增 MAPE 總和的變量
-    
+    total_mape = 0
+
     # 計算每個步長的指標
     for step in range(forecast_horizon):
         step_mae = mean_absolute_error(Y_test[:, step], predicted[:, step])
         step_mse = mean_squared_error(Y_test[:, step], predicted[:, step])
         step_rmse = sqrt(step_mse)
         step_r2 = r2_score(Y_test[:, step], predicted[:, step])
-        # 計算每一步的 MAPE
         step_mape = mean_absolute_percentage_error(Y_test[:, step], predicted[:, step])
         
         total_mae += step_mae
         total_rmse += step_rmse
         total_r2 += step_r2
-        total_mape += step_mape  # 累加 MAPE
+        total_mape += step_mape
     
     # 計算所有預測步長的平均值
     mae = total_mae / forecast_horizon
     rmse = total_rmse / forecast_horizon
     r2 = total_r2 / forecast_horizon
-    mape = total_mape / forecast_horizon  # 平均 MAPE
+    mape = total_mape / forecast_horizon
     
     print(f'Mean Absolute Error (平均): {mae}')
     print(f'Root Mean Squared Error (平均): {rmse}')
     print(f'R^2 Score (平均): {r2}')
-    print(f'Mean Absolute Percentage Error (平均): {mape}')  # 輸出 MAPE
+    print(f'Mean Absolute Percentage Error (平均): {mape}')
     
     return mae, rmse, r2, mape
 
@@ -96,6 +156,33 @@ def plot_results(model, Y_test, X_test_scaled):
     plt.xlabel('Time Point')
     plt.legend()
     plt.show()
+
+# def save_data(y_true, y_predict, purpose, filename=None):
+#     """
+#     Save multi-step prediction results to a CSV file.
+
+#     Parameters:
+#         y_true: numpy array, true target values (shape: [samples, forecast_horizon]).
+#         y_predict: numpy array, predicted values (shape: [samples, forecast_horizon]).
+#         purpose: str, purpose description for the file name.
+#         filename: str or None, file name for saving the data.
+#     """
+#     if filename is None:
+#         now = datetime.datetime.now()
+#         filename = purpose + "_" + now.strftime("%m-%d_%H_%M") + '.csv'
+    
+#     # Prepare a DataFrame for multi-step predictions
+#     df = pd.DataFrame()
+#     forecast_horizon = y_true.shape[1]  # Number of forecast steps
+    
+#     for step in range(forecast_horizon):
+#         df[f'y_true_step_{step+1}'] = y_true[:, step]
+#         df[f'y_predict_step_{step+1}'] = y_predict[:, step]
+    
+#     # Save the DataFrame to a CSV file
+#     df.to_csv(f"records/{filename}", index=False)
+
+#     print(f"Data saved to records/{filename}")
 
 def save_data(y_true, y_predict, purpose, filename=None):
     """
@@ -301,6 +388,8 @@ if __name__ == "__main__":
         for look_back in [48]:
             print(f"Current Look Back: {look_back}")
             X, y = create_dataset(df.values, look_back, h=horizon)
+            #X, y = create_dataset_single_step(df.values, look_back, step=8)
+            
             length = len(X)
             for percent in [100]:
                 print(f"Percent: {percent}%")
@@ -316,6 +405,8 @@ if __name__ == "__main__":
                 train_ratio = 0.85
                 X_train, Y_train, X_validation, Y_validation = split_time_series_data_2parts(X_train, Y_train, train_ratio)
                 n_features = X_test.shape[2]
+                # 假設 Y_train, Y_validation, Y_test 已經準備好
+ 
 
                 print(f"train:{X_train.shape}")
                 print(f"validation:{X_validation.shape}")
@@ -328,22 +419,46 @@ if __name__ == "__main__":
                     break
 
                 X_train_scaled, X_validation_scaled, X_test_scaled = scaling(X_train, X_validation, X_test, len_of_scale)
-                X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca_model = scaling_and_pca(
-                    X_train, 
-                    X_validation, 
-                    X_test,
-                    n_components=18
-                )
+                # X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca_model = scaling_and_pca(
+                #     X_train, 
+                #     X_validation, 
+                #     X_test,
+                #     n_components=18
+                # )
+                # X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca_model = scaling_and_ica(
+                #     X_train, 
+                #     X_validation, 
+                #     X_test,
+                #     n_components=18
+                # )
+                X_dec_train = create_decoder_input(Y_train, target_features=X_train_scaled.shape[2])
+                X_dec_validation = create_decoder_input(Y_validation, target_features=X_train_scaled.shape[2])
+                X_dec_test = create_decoder_input(Y_test, target_features=X_train_scaled.shape[2])  # 若需要用于推斷階段教師強制
+
                 #model = build_model_LSTM(look_back, X_train_scaled.shape[2], h=horizon)
-                model = build_model_MLP(look_back, X_train_scaled.shape[2], h=horizon)
+                #model = build_model_MLP(look_back, X_train_scaled.shape[2], h=horizon)
                 #model = build_model_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
+                #model = build_model_tcn_gru(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
+                #model = build_seq2seq_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
+                model = build_seq2seq_tcn_lstm(look_back, X_train_scaled.shape[2], 
+                                h=horizon,
+                                latent_dim=64,
+                                nb_filters=32,
+                                kernel_size=3)
+
                 #model = build_model_sensors(look_back, n_features, h=horizon)
-                history = train_model(model, X_train_scaled, Y_train, X_validation_scaled, Y_validation)
-                
+                #history = train_model(model, X_train_scaled, Y_train, X_validation_scaled, Y_validation)
+                history = model.fit(
+                    [X_train_scaled, X_dec_train],  # Encoder 和 Decoder 輸入
+                    Y_train, 
+                    epochs=500,
+                    batch_size=128, 
+                    validation_data=([X_validation_scaled, X_dec_validation], Y_validation)
+                )
                 # save results of training data
-                mae, rmse, r2, mape = metrics(model, Y_test, X_test_scaled, purpose="Test", forecast_horizon=horizon)
-                metrics(model, Y_train, X_train_scaled, purpose="Train", forecast_horizon=horizon)
-                metrics(model, Y_validation, X_validation_scaled, purpose="Validation", forecast_horizon=horizon)
+                mae, rmse, r2, mape = metrics(model, Y_test, [X_test_scaled, X_dec_test], purpose="Test")#, forecast_horizon=horizon)
+                #metrics(model, Y_train, X_train_scaled, purpose="Train")#, forecast_horizon=horizon)
+                #metrics(model, Y_validation, X_validation_scaled, purpose="Validation")#, forecast_horizon=horizon)
 
                 #plot_results_per_step(Y_test, model.predict(X_test_scaled), forecast_horizon=horizon, sample_range=(85, 100))
                 #plot_results_offset(Y_test, model.predict(X_test_scaled), forecast_horizon=horizon, sample_range=(85, 100))
