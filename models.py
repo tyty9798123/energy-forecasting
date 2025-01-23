@@ -59,11 +59,12 @@ def build_seq2seq_TCN(look_back, n_features, h=1):
                   loss=rmse)  # 假设您定义了 rmse
     return model
 
+from keras import regularizers
+
 def build_model_TCN(look_back, n_features, h=1):
     model = Sequential()
-    model.add(TCN(input_shape=(look_back, n_features), return_sequences=False, kernel_size=2, nb_filters=32))
-    model.add(Dense(h))
-    #model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),loss=rmsle)
+    model.add(TCN(input_shape=(look_back, n_features), return_sequences=False, kernel_size=2, nb_filters=32)), #dropout_rate=0.2))
+    model.add(Dense(h))  # e.g., L2 regularization factor))
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=rmse)
     return model
 
@@ -79,8 +80,8 @@ def build_seq2seq_tcn_lstm(look_back,
                          kernel_size=kernel_size,
                          return_sequences=False,
                          name='tcn_encoder')(encoder_inputs)
-    state_h = Dense(latent_dim, activation='linear', name='encoder_state_h')(encoder_output)
-    state_c = Dense(latent_dim, activation='linear', name='encoder_state_c')(encoder_output)
+    state_h = Dense(latent_dim, name='encoder_state_h')(encoder_output)
+    state_c = Dense(latent_dim, name='encoder_state_c')(encoder_output)
 
     # ------- Decoder 部分 (LSTM) -------
     decoder_inputs = Input(shape=(h, n_features), name='decoder_input')
@@ -88,7 +89,7 @@ def build_seq2seq_tcn_lstm(look_back,
     decoder_outputs, _, _ = decoder_lstm(decoder_inputs, initial_state=[state_h, state_c])
     
     # 調整 Dense 層以輸出單一特徵
-    decoder_dense = Dense(1, activation='linear', name='decoder_output_dense')
+    decoder_dense = Dense(1, name='decoder_output_dense')
     decoder_outputs = decoder_dense(decoder_outputs)
 
     # ------- 建立模型 -------

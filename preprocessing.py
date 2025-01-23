@@ -2,7 +2,7 @@
 
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 
 def load_data():
@@ -174,6 +174,52 @@ def scaling(X_train, X_validation, X_test, num_features=4):
         X_test_scaled[:, :, i] = X_test_feature_scaled
     return X_train_scaled, X_validation_scaled, X_test_scaled
 
+
+def scaling_auto(X_train, X_validation, X_test):
+    # 复制原始数据以避免修改原数组
+    X_train_scaled = np.copy(X_train)
+    X_validation_scaled = np.copy(X_validation)
+    X_test_scaled = np.copy(X_test)
+    
+    # 获取特征维度数量
+    num_features = X_train.shape[2]
+    numeric_feature_indices = []
+
+    # 自动检测数值型特征（非 one-hot 特征）
+    for i in range(num_features):
+        # 获取训练集中第 i 个特征的所有唯一值
+        unique_vals = np.unique(X_train[:, :, i])
+        # 如果不全是 0 和 1，则认为是数值型特征
+        if not set(unique_vals).issubset({0, 1}):
+            numeric_feature_indices.append(i)
+
+    # 对检测到的数值型特征进行标准化
+    for i in numeric_feature_indices:
+        scaler = StandardScaler()
+        
+        # 标准化训练集特征
+        X_train_feature = X_train[:, :, i]
+        X_train_feature_scaled = scaler.fit_transform(
+            X_train_feature.reshape(-1, 1)
+        ).reshape(X_train_feature.shape)
+        X_train_scaled[:, :, i] = X_train_feature_scaled
+        
+        # 使用训练集拟合的参数标准化验证集特征
+        X_validation_feature = X_validation[:, :, i]
+        X_validation_feature_scaled = scaler.transform(
+            X_validation_feature.reshape(-1, 1)
+        ).reshape(X_validation_feature.shape)
+        X_validation_scaled[:, :, i] = X_validation_feature_scaled
+        
+        # 使用训练集拟合的参数标准化测试集特征
+        X_test_feature = X_test[:, :, i]
+        X_test_feature_scaled = scaler.transform(
+            X_test_feature.reshape(-1, 1)
+        ).reshape(X_test_feature.shape)
+        X_test_scaled[:, :, i] = X_test_feature_scaled
+
+    # 未列入 numeric_feature_indices 的特征（如 one-hot）保持原样
+    return X_train_scaled, X_validation_scaled, X_test_scaled
 
 def scaling_and_pca(X_train, X_validation, X_test, 
                     n_components=10, 

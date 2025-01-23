@@ -10,12 +10,14 @@ from math import sqrt
 #from keras.layers import Layer
 import keras.backend as K
 import seaborn as sns
+from keras.utils import plot_model
+
 import datetime
 import time
 
 
 from preprocessing import (load_data, add_features, add_temp, add_emd, create_dataset, 
-                           split_time_series_data, split_time_series_data_2parts, scaling, scaling_and_pca, scaling_and_ica, create_dataset_single_step, create_decoder_input)
+                           split_time_series_data, split_time_series_data_2parts, scaling, scaling_and_pca, scaling_and_ica, create_dataset_single_step, create_decoder_input, scaling_auto)
 
 from models import (build_model, build_model_LSTM, build_model_TCN, build_combined_model,
                     build_model_sensors, build_model_cnn, build_model_cnn_lstm, build_model_tcn_gru,
@@ -376,19 +378,19 @@ def plot_error_heatmap(y_true, y_predict, forecast_horizon, sample_range=None):
 
 if __name__ == "__main__":
     df = load_data()
-    len_of_scale = len(df.columns)
+    #len_of_scale = len(df.columns)
     df = add_features(df)
     df = add_temp(df)
-
+    print(df)
     records = []
     horizon = 8
-    exec_time = 1
+    exec_time = 10
 
     for i in range(exec_time):
-        for look_back in [48]:
+        for look_back in [168]:
             print(f"Current Look Back: {look_back}")
             X, y = create_dataset(df.values, look_back, h=horizon)
-            #X, y = create_dataset_single_step(df.values, look_back, step=8)
+            #X, y = create_dataset_single_step(df.values, look_back, step=1)
             
             length = len(X)
             for percent in [100]:
@@ -399,10 +401,10 @@ if __name__ == "__main__":
 
                 print(f"該批次總長度: {len(new_X)}")
                 # 固定測試資料長度
-                X_test, Y_test = new_X[-int(length*0.1):], new_y[-int(length*0.1):]
+                X_test, Y_test = new_X[-int(length*0.15):], new_y[-int(length*0.15):]
                 # 訓練和驗證資料
-                X_train, Y_train = new_X[:-int(length*0.1)], new_y[:-int(length*0.1)]
-                train_ratio = 0.85
+                X_train, Y_train = new_X[:-int(length*0.15)], new_y[:-int(length*0.15)]
+                train_ratio = 0.825
                 X_train, Y_train, X_validation, Y_validation = split_time_series_data_2parts(X_train, Y_train, train_ratio)
                 n_features = X_test.shape[2]
                 # 假設 Y_train, Y_validation, Y_test 已經準備好
@@ -417,8 +419,9 @@ if __name__ == "__main__":
                 else:
                     print("分割不正確.")
                     break
-
-                X_train_scaled, X_validation_scaled, X_test_scaled = scaling(X_train, X_validation, X_test, len_of_scale)
+            
+                X_train_scaled, X_validation_scaled, X_test_scaled = scaling_auto(X_train, X_validation, X_test)
+                # print(X_train_scaled)
                 # X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca_model = scaling_and_pca(
                 #     X_train, 
                 #     X_validation, 
@@ -431,34 +434,37 @@ if __name__ == "__main__":
                 #     X_test,
                 #     n_components=18
                 # )
-                X_dec_train = create_decoder_input(Y_train, target_features=X_train_scaled.shape[2])
-                X_dec_validation = create_decoder_input(Y_validation, target_features=X_train_scaled.shape[2])
-                X_dec_test = create_decoder_input(Y_test, target_features=X_train_scaled.shape[2])  # 若需要用于推斷階段教師強制
+                # X_dec_train = create_decoder_input(Y_train, target_features=X_train_scaled.shape[2])
+                # X_dec_validation = create_decoder_input(Y_validation, target_features=X_train_scaled.shape[2])
+                # X_dec_test = create_decoder_input(Y_test, target_features=X_train_scaled.shape[2])  # 若需要用于推斷階段教師強制
 
                 #model = build_model_LSTM(look_back, X_train_scaled.shape[2], h=horizon)
                 #model = build_model_MLP(look_back, X_train_scaled.shape[2], h=horizon)
-                #model = build_model_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
+                model = build_model_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
                 #model = build_model_tcn_gru(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
                 #model = build_seq2seq_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
-                model = build_seq2seq_tcn_lstm(look_back, X_train_scaled.shape[2], 
-                                h=horizon,
-                                latent_dim=64,
-                                nb_filters=32,
-                                kernel_size=3)
+                # model = build_seq2seq_tcn_lstm(look_back, X_train_scaled.shape[2], 
+                #                 h=horizon,
+                #                 latent_dim=64,
+                #                 nb_filters=32,
+                #                 kernel_size=2)
 
                 #model = build_model_sensors(look_back, n_features, h=horizon)
-                #history = train_model(model, X_train_scaled, Y_train, X_validation_scaled, Y_validation)
-                history = model.fit(
-                    [X_train_scaled, X_dec_train],  # Encoder 和 Decoder 輸入
-                    Y_train, 
-                    epochs=500,
-                    batch_size=128, 
-                    validation_data=([X_validation_scaled, X_dec_validation], Y_validation)
-                )
+                history = train_model(model, X_train_scaled, Y_train, X_validation_scaled, Y_validation)
+                # history = model.fit(
+                #     [X_train_scaled, X_dec_train],  # Encoder 和 Decoder 輸入
+                #     Y_train, 
+                #     epochs=500,
+                #     batch_size=128, 
+                #     validation_data=([X_validation_scaled, X_dec_validation], Y_validation)
+                # )
+
+
+
                 # save results of training data
-                mae, rmse, r2, mape = metrics(model, Y_test, [X_test_scaled, X_dec_test], purpose="Test")#, forecast_horizon=horizon)
-                #metrics(model, Y_train, X_train_scaled, purpose="Train")#, forecast_horizon=horizon)
-                #metrics(model, Y_validation, X_validation_scaled, purpose="Validation")#, forecast_horizon=horizon)
+                mae, rmse, r2, mape = metrics(model, Y_test, X_test_scaled, purpose="Test")#, forecast_horizon=horizon)
+                metrics(model, Y_train, X_train_scaled, purpose="Train")#, forecast_horizon=horizon)
+                metrics(model, Y_validation, X_validation_scaled, purpose="Validation")#, forecast_horizon=horizon)
 
                 #plot_results_per_step(Y_test, model.predict(X_test_scaled), forecast_horizon=horizon, sample_range=(85, 100))
                 #plot_results_offset(Y_test, model.predict(X_test_scaled), forecast_horizon=horizon, sample_range=(85, 100))
