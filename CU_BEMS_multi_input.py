@@ -16,7 +16,7 @@ import datetime
 import time
 
 
-from preprocessing import (load_data, add_features, add_temp, add_emd, create_dataset, 
+from preprocessing import (load_data, add_features, add_temp, add_emd, create_dataset, add_gaussian_noise,
                            split_time_series_data, split_time_series_data_2parts, scaling, scaling_and_pca, scaling_and_ica, create_dataset_single_step, create_decoder_input, scaling_auto)
 
 from models import (build_model, build_model_LSTM, build_model_TCN, build_combined_model,
@@ -384,16 +384,17 @@ if __name__ == "__main__":
     print(df)
     records = []
     horizon = 8
-    exec_time = 10
+    exec_time = 1
 
     for i in range(exec_time):
         for look_back in [168]:
             print(f"Current Look Back: {look_back}")
             X, y = create_dataset(df.values, look_back, h=horizon)
-            #X, y = create_dataset_single_step(df.values, look_back, step=1)
+            #X, y = create_dataset_single_step(df.values, look_back, step=5)
             
             length = len(X)
             for percent in [100]:
+                train_ratio = 0.825
                 print(f"Percent: {percent}%")
                 index_percent = int(length * percent * 0.01)
                 new_X = X[:index_percent]
@@ -404,8 +405,11 @@ if __name__ == "__main__":
                 X_test, Y_test = new_X[-int(length*0.15):], new_y[-int(length*0.15):]
                 # 訓練和驗證資料
                 X_train, Y_train = new_X[:-int(length*0.15)], new_y[:-int(length*0.15)]
-                train_ratio = 0.825
                 X_train, Y_train, X_validation, Y_validation = split_time_series_data_2parts(X_train, Y_train, train_ratio)
+                
+                # 加入噪聲
+                Y_train = add_gaussian_noise(Y_train, noise_level=0.05, seed=42)
+
                 n_features = X_test.shape[2]
                 # 假設 Y_train, Y_validation, Y_test 已經準備好
  
@@ -421,6 +425,7 @@ if __name__ == "__main__":
                     break
             
                 X_train_scaled, X_validation_scaled, X_test_scaled = scaling_auto(X_train, X_validation, X_test)
+                
                 # print(X_train_scaled)
                 # X_train_scaled, X_validation_scaled, X_test_scaled, scaler, pca_model = scaling_and_pca(
                 #     X_train, 

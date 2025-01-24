@@ -175,6 +175,31 @@ def scaling(X_train, X_validation, X_test, num_features=4):
     return X_train_scaled, X_validation_scaled, X_test_scaled
 
 
+def add_gaussian_noise(Y_train, noise_level=0.1, seed=None):
+    """
+    為 Y_train 加入高斯 (Gaussian) 雜訊。
+    
+    參數：
+    - Y_train     : np.ndarray，原始目標值，形狀不限
+    - noise_level : 浮點數，控制雜訊的標準差大小，預設為 0.1
+    - seed        : 整數，亂數種子，若需要重複實驗可固定此值；若不需要則保持 None
+    
+    回傳：
+    - Y_train_noisy : np.ndarray，加入雜訊後的目標值
+    """
+    # 如果想讓每次產生的雜訊都一致，可以設定 seed
+    if seed is not None:
+        np.random.seed(seed)
+    
+    # 根據 Y_train 的形狀產生高斯雜訊
+    noise = np.random.normal(loc=0.0, scale=noise_level, size=Y_train.shape)
+    
+    # 加入雜訊
+    Y_train_noisy = Y_train + noise
+    
+    return Y_train_noisy
+
+
 def scaling_auto(X_train, X_validation, X_test):
     # 复制原始数据以避免修改原数组
     X_train_scaled = np.copy(X_train)
