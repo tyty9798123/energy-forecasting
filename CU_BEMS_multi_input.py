@@ -384,7 +384,7 @@ if __name__ == "__main__":
     print(df)
     records = []
     horizon = 8
-    exec_time = 1
+    exec_time = 10
 
     for i in range(exec_time):
         for look_back in [168]:
@@ -408,7 +408,7 @@ if __name__ == "__main__":
                 X_train, Y_train, X_validation, Y_validation = split_time_series_data_2parts(X_train, Y_train, train_ratio)
                 
                 # 加入噪聲
-                Y_train = add_gaussian_noise(Y_train, noise_level=0.05, seed=42)
+                Y_train = add_gaussian_noise(Y_train, noise_level=0.1, seed=42)
 
                 n_features = X_test.shape[2]
                 # 假設 Y_train, Y_validation, Y_test 已經準備好
