@@ -8,20 +8,21 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score, mean_absolute_error
 from math import sqrt
 #from keras.layers import Layer
-import keras.backend as K
+#import keras.backend as K
 import seaborn as sns
 from keras.utils import plot_model
+from keras.utils import to_categorical
 
 import datetime
 import time
 
-
-from preprocessing import (load_data, add_features, add_temp, add_emd, create_dataset, add_gaussian_noise,
+from preprocessing import (load_data, add_features, add_temp, add_emd, create_dataset, add_gaussian_noise, create_dataset_classification,
                            split_time_series_data, split_time_series_data_2parts, scaling, scaling_and_pca, scaling_and_ica, create_dataset_single_step, create_decoder_input, scaling_auto)
 
 from models import (build_model, build_model_LSTM, build_model_TCN, build_combined_model,
                     build_model_sensors, build_model_cnn, build_model_cnn_lstm, build_model_tcn_gru,
-                    train_model, train_model_2, build_model_TCN_II, build_model_MLP, build_seq2seq_TCN, build_seq2seq_tcn_lstm)
+                    train_model, train_model_2, build_model_TCN_II, build_model_MLP, build_seq2seq_TCN, build_seq2seq_tcn_lstm,
+                    build_model_TCN_multiclass)
 
 from math import sqrt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_absolute_percentage_error
@@ -65,6 +66,130 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, m
 #     print(f'Mean Absolute Percentage Error (平均): {mape}')  # 輸出 MAPE
     
 #     return mae, rmse, r2, mape
+
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+
+def classification_metrics(model, Y_test, X_test_scaled, purpose, average='macro'):
+    # Use the model to make predictions
+    predicted = model.predict(X_test_scaled)  # Expected shape: (samples,) or (samples, forecast_horizon)
+
+    # Ensure Y_test and predicted are 2D arrays: (samples, horizon)
+    if len(Y_test.shape) == 1:
+        Y_test = Y_test.reshape(-1, 1)
+    if len(predicted.shape) == 1:
+        predicted = predicted.reshape(-1, 1)
+
+    # Now Y_test and predicted are both (samples, forecast_horizon)
+    forecast_horizon = Y_test.shape[1]
+
+    # Save predictions and true labels for further analysis
+    #save_data(Y_test, predicted, purpose=purpose)
+
+    # Initialize metric totals
+    total_accuracy = 0
+    total_precision = 0
+    total_recall = 0
+    total_f1 = 0
+
+    # Calculate metrics for each step in the forecast horizon
+    for step in range(forecast_horizon):
+        step_accuracy = accuracy_score(Y_test[:, step], predicted[:, step])
+        step_precision = precision_score(Y_test[:, step], predicted[:, step], average=average, zero_division=0)
+        step_recall = recall_score(Y_test[:, step], predicted[:, step], average=average, zero_division=0)
+        step_f1 = f1_score(Y_test[:, step], predicted[:, step], average=average, zero_division=0)
+
+        total_accuracy += step_accuracy
+        total_precision += step_precision
+        total_recall += step_recall
+        total_f1 += step_f1
+
+    # Calculate the average metrics over all forecast steps
+    avg_accuracy = total_accuracy / forecast_horizon
+    avg_precision = total_precision / forecast_horizon
+    avg_recall = total_recall / forecast_horizon
+    avg_f1 = total_f1 / forecast_horizon
+
+    print(f'Average Accuracy: {avg_accuracy:.4f}')
+    print(f'Average Precision ({average}): {avg_precision:.4f}')
+    print(f'Average Recall ({average}): {avg_recall:.4f}')
+    print(f'Average F1 Score ({average}): {avg_f1:.4f}')
+
+    return avg_accuracy, avg_precision, avg_recall, avg_f1
+
+
+def classification_metrics(model, Y_test, X_test_scaled, purpose, average='macro'):
+    """
+    Calculate and output Accuracy, Precision, Recall, F1-Score, etc.
+    Can handle both single-step predictions (samples,) and multi-step predictions (samples, horizon).
+
+    Parameters:
+        model: Trained classification model used for predictions.
+        Y_test: numpy array, shape can be (samples,) or (samples, horizon).
+                If one-hot encoded or probabilistic, it will be converted to class labels.
+        X_test_scaled: numpy array, scaled inputs required by the model.
+        purpose: str, used for naming files in save_data().
+        average: str, type of averaging performed on the data (e.g., 'macro', 'micro', 'weighted').
+                 This is passed to precision_score, recall_score, and f1_score.
+    """
+    # Use the model to make predictions
+    predicted = model.predict(X_test_scaled)  # Expected shape: (samples,) or (samples, forecast_horizon)
+
+    # Ensure Y_test and predicted are 2D arrays: (samples, horizon)
+    if len(Y_test.shape) == 1:
+        Y_test = Y_test.reshape(-1, 1)
+    if len(predicted.shape) == 1:
+        predicted = predicted.reshape(-1, 1)
+
+    # Now Y_test and predicted are both (samples, forecast_horizon)
+    forecast_horizon = Y_test.shape[1]
+
+    # **Convert One-Hot Encoded Labels to Class Labels**
+    # Check if Y_test is one-hot encoded or probabilistic
+    if Y_test.shape[1] > 1:
+        Y_test = np.argmax(Y_test, axis=1).reshape(-1, 1)
+
+    # Similarly, convert predicted if it's in probability or one-hot form
+    if predicted.shape[1] > 1:
+        predicted = np.argmax(predicted, axis=1).reshape(-1, 1)
+
+    print(Y_test)
+    print(predicted)
+    # Now Y_test and predicted should be (samples, forecast_horizon) with integer class labels
+    # Optionally, you can print shapes for debugging
+    print(f'{purpose} shape after processing: {Y_test.shape}')
+    print(f'predicted shape after processing: {predicted.shape}')
+    return accuracy_score(Y_test, predicted), precision_score(Y_test, predicted, average=average), recall_score(Y_test, predicted, average=average), f1_score(Y_test, predicted, average=average)
+    # Initialize metric totals
+    total_accuracy = 0
+    total_precision = 0
+    total_recall = 0
+    total_f1 = 0
+
+    # Calculate metrics for each step in the forecast horizon
+    for step in range(forecast_horizon):
+        step_accuracy = accuracy_score(Y_test[:, step], predicted[:, step])
+        step_precision = precision_score(Y_test[:, step], predicted[:, step], average=average, zero_division=0)
+        step_recall = recall_score(Y_test[:, step], predicted[:, step], average=average, zero_division=0)
+        step_f1 = f1_score(Y_test[:, step], predicted[:, step], average=average, zero_division=0)
+
+        total_accuracy += step_accuracy
+        total_precision += step_precision
+        total_recall += step_recall
+        total_f1 += step_f1
+
+    # Calculate the average metrics over all forecast steps
+    avg_accuracy = total_accuracy / forecast_horizon
+    avg_precision = total_precision / forecast_horizon
+    avg_recall = total_recall / forecast_horizon
+    avg_f1 = total_f1 / forecast_horizon
+
+    print(f'Average Accuracy: {avg_accuracy:.4f}')
+    print(f'Average Precision ({average}): {avg_precision:.4f}')
+    print(f'Average Recall ({average}): {avg_recall:.4f}')
+    print(f'Average F1 Score ({average}): {avg_f1:.4f}')
+
+    return avg_accuracy, avg_precision, avg_recall, avg_f1
 
 def metrics(model, Y_test, X_test_scaled, purpose):
     """
@@ -383,14 +508,25 @@ if __name__ == "__main__":
     df = add_temp(df)
     print(df)
     records = []
-    horizon = 8
+    horizon = 24
     exec_time = 10
+    mode="reg"
 
     for i in range(exec_time):
         for look_back in [168]:
             print(f"Current Look Back: {look_back}")
-            X, y = create_dataset(df.values, look_back, h=horizon)
-            #X, y = create_dataset_single_step(df.values, look_back, step=5)
+            if mode=="reg":
+                X, y = create_dataset(df.values, look_back, h=horizon)
+                #X, y = create_dataset_single_step(df.values, look_back, step=1)
+
+
+            if mode=="class":
+                num_class=4
+                X, y, bin_edges= create_dataset_classification(df.values, look_back=look_back, h=horizon, k=num_class)
+                print(bin_edges)
+                # 假設 y 原本形狀為 (num_samples, h)，值範圍為 [0, num_classes-1]
+                y = to_categorical(y, num_classes=num_class)  # 轉換為 (num_samples, h, num_classes)
+                print(y.shape)
             
             length = len(X)
             for percent in [100]:
@@ -408,7 +544,8 @@ if __name__ == "__main__":
                 X_train, Y_train, X_validation, Y_validation = split_time_series_data_2parts(X_train, Y_train, train_ratio)
                 
                 # 加入噪聲
-                Y_train = add_gaussian_noise(Y_train, noise_level=0.1, seed=42)
+                if mode=="reg":
+                    Y_train = add_gaussian_noise(Y_train, noise_level=0.05, seed=42)
 
                 n_features = X_test.shape[2]
                 # 假設 Y_train, Y_validation, Y_test 已經準備好
@@ -445,7 +582,11 @@ if __name__ == "__main__":
 
                 #model = build_model_LSTM(look_back, X_train_scaled.shape[2], h=horizon)
                 #model = build_model_MLP(look_back, X_train_scaled.shape[2], h=horizon)
-                model = build_model_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
+                if mode=="reg":
+                    model = build_model_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
+                if mode=="class":
+                    print("entered")
+                    model = build_model_TCN_multiclass(look_back=look_back, n_features=X_train_scaled.shape[2], h=horizon, num_classes=num_class)
                 #model = build_model_tcn_gru(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
                 #model = build_seq2seq_TCN(look_back, X_train_scaled.shape[2], h=horizon) # look back, features, h
                 # model = build_seq2seq_tcn_lstm(look_back, X_train_scaled.shape[2], 
@@ -467,14 +608,47 @@ if __name__ == "__main__":
 
 
                 # save results of training data
-                mae, rmse, r2, mape = metrics(model, Y_test, X_test_scaled, purpose="Test")#, forecast_horizon=horizon)
-                metrics(model, Y_train, X_train_scaled, purpose="Train")#, forecast_horizon=horizon)
-                metrics(model, Y_validation, X_validation_scaled, purpose="Validation")#, forecast_horizon=horizon)
+                if mode == "reg":
+                    mae, rmse, r2, mape = metrics(model, Y_test, X_test_scaled, purpose="Test")#, forecast_horizon=horizon)
+                    metrics(model, Y_train, X_train_scaled, purpose="Train")#, forecast_horizon=horizon)
+                    metrics(model, Y_validation, X_validation_scaled, purpose="Validation")#, forecast_horizon=horizon)
+                    records.append([look_back, percent, mae, rmse, r2, mape])
+                    print(records)
+                if mode == "class":
+                    # Compute classification metrics for the Test set and capture the returned values
+                    accuracy, precision, recall, f1 = classification_metrics(
+                        model,
+                        Y_test,
+                        X_test_scaled,
+                        purpose="Test",
+                        average='macro'  # Adjust based on your classification needs
+                    )
+
+                    # Optionally compute metrics for Train and Validation sets (results are printed/saved internally)
+                    classification_metrics(
+                        model,
+                        Y_train,
+                        X_train_scaled,
+                        purpose="Train",
+                        average='macro'
+                    )
+
+                    classification_metrics(
+                        model,
+                        Y_validation,
+                        X_validation_scaled,
+                        purpose="Validation",
+                        average='macro'
+                    )
+
+                    # Append the captured metrics to the records list
+                    records.append([look_back, percent, accuracy, precision, recall, f1])
+
+                    # Print the records to verify
+                    print(records)
 
                 #plot_results_per_step(Y_test, model.predict(X_test_scaled), forecast_horizon=horizon, sample_range=(85, 100))
                 #plot_results_offset(Y_test, model.predict(X_test_scaled), forecast_horizon=horizon, sample_range=(85, 100))
                 #plot_error_heatmap(Y_test, model.predict(X_test_scaled), forecast_horizon=horizon, sample_range=(85, 100))
                 
-                records.append([look_back, percent, mae, rmse, r2, mape])
-                print(records)
                 time.sleep(95)

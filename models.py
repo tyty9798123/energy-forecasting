@@ -1,7 +1,8 @@
 # models.py
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Dense, LSTM, Conv1D, MaxPooling1D, Flatten, RepeatVector, Reshape, Bidirectional, GRU, Input, Concatenate, SimpleRNN
+from tensorflow.keras.layers import Dense, LSTM, Conv1D, MaxPooling1D, Flatten, RepeatVector, Reshape, Bidirectional, GRU, Input, Concatenate, SimpleRNN, Activation
+
 from tcn import TCN
 from tensorflow.keras.callbacks import EarlyStopping
 
@@ -63,10 +64,40 @@ from keras import regularizers
 
 def build_model_TCN(look_back, n_features, h=1):
     model = Sequential()
-    model.add(TCN(input_shape=(look_back, n_features), return_sequences=False, kernel_size=2, nb_filters=32)), #dropout_rate=0.2))
+    model.add(TCN(input_shape=(look_back, n_features), return_sequences=False, kernel_size=2, nb_filters=32))#, dropout_rate=0.2))
     model.add(Dense(h))  # e.g., L2 regularization factor))
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=rmse)
     return model
+
+def build_model_TCN_multiclass(look_back, n_features, h, num_classes):
+    model = Sequential()
+    
+    # 添加 TCN 層，返回全局特徵表示
+    model.add(TCN(
+        input_shape=(look_back, n_features),
+        return_sequences=False,  # 不返回每個時間步的輸出
+        kernel_size=2,
+        nb_filters=32
+    ))
+    
+    # 全連接層，將特徵轉換為 h * num_classes 維度
+    model.add(Dense(h * num_classes, activation='relu'))
+    
+    # 重塑為 (batch_size, h, num_classes)
+    model.add(Reshape((h, num_classes)))
+    
+    # 在每個時間步應用 softmax 激活函數
+    model.add(Activation('softmax'))
+    
+    # 編譯模型
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
+    return model
+
+
 
 def build_seq2seq_tcn_lstm(look_back,
                            n_features,

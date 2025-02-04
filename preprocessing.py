@@ -72,6 +72,53 @@ def create_dataset(data, look_back=1, h=1):
         Y.append(data[i + look_back:i + look_back + h, 0])  # Assuming we predict only the first feature
     return np.array(X), np.array(Y)
 
+def create_dataset_classification(data, look_back=1, h=1, k=8):
+    """
+    創建用於多步預測的分類數據集（等寬分箱）。
+    
+    參數:
+        data: numpy array, 輸入數據集（例如時間序列數據）。
+        look_back: int, 用作輸入（X）的過去時間步數。
+        h: int, 要預測的未來時間步數（預測範圍）。
+        k: int, 將目標變量分成的類別數量。
+    
+    返回:
+        X: numpy array, 輸入特徵，形狀為 (樣本數, look_back, 特徵數)。
+        Y: numpy array, 目標標籤，形狀為 (樣本數, forecast_horizon)。
+        bin_edges: numpy array, 分箱的邊界值。
+    """
+    X, Y = [], []
+    for i in range(len(data) - look_back - h + 1):
+        # 輸入序列，長度為 `look_back`
+        X.append(data[i:(i + look_back), :])
+        # 目標序列，長度為 `h`
+        Y.append(data[i + look_back:i + look_back + h, 0])  # 假設預測第一個特徵
+    X = np.array(X)
+    Y = np.array(Y)
+    
+    # 將 Y 轉換為分類標籤
+    Y_flat = Y.flatten()
+    
+    # 確保數據全為正數（如果業務需求如此）
+    if np.min(Y_flat) < 0:
+        print("警告：Y 包含負值。請檢查數據或考慮轉換數據。")
+        # 例如，可以將所有值加上一個常數，使其全為正
+        Y_flat = Y_flat + abs(np.min(Y_flat)) + 1  # 加1以避免最小值為0
+    
+    try:
+        Y_binned, bin_edges = pd.cut(Y_flat, bins=k, labels=False, retbins=True, include_lowest=True)
+    except ValueError as e:
+        raise ValueError(f"無法將數據分成 {k} 等份。請檢查數據分佈或減少 k 的值。") from e
+
+    # 如果之前加過常數，可以在需要時反轉
+    # 例如，反向加上常數：
+    # Y_binned = Y_binned - (abs(np.min(Y_flat)) + 1)
+    
+    # 將分類標籤重新形狀為 (樣本數, forecast_horizon)
+    Y_binned = Y_binned.reshape(Y.shape)
+    
+    return X, Y_binned, bin_edges
+
 def create_decoder_input(target_sequence, target_features=36):
     """
     根據目標序列創建 Decoder 輸入，並將特徵維度擴展到 target_features。
